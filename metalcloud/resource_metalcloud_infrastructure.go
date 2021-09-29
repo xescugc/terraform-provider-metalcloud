@@ -105,6 +105,12 @@ func ResourceInfrastructure() *schema.Resource {
 				Elem:     resourceSharedDrive(),
 				Set:      sharedDriveResourceHash,
 			},
+			"firmware_upgrade_policy": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem:     resourceFirmwareUpgradePolicy(),
+				Set:      firmwareUpgradePolicyResourceHash,
+			},
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(45 * time.Minute),
@@ -376,6 +382,82 @@ func resourceInstanceArrayInterface() *schema.Resource {
 	}
 }
 
+func resourceFirmwareUpgradePolicy() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"server_firmware_upgrade_policy_label": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_firmware_upgrade_policy_id": &schema.Schema{
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+			},
+			"server_firmware_upgrade_policy_action": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"instance_array_label": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_firmware_upgrade_policy_rules": &schema.Schema{
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem:     resourceServerFirmwareUpgradePolicyRule(),
+				Set:      firmareUpgradePolicyRuleHash,
+			},
+		},
+	}
+}
+
+func resourceServerFirmwareUpgradePolicyRule() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"operation": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+
+			"server_component_name": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_component_type": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_component_firmware_version": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"datacenter_name": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_vendor": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"server_tags_json": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+
+			"server_component_target_version": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+			},
+
+			"server_id": &schema.Schema{
+				Type:     schema.TypeInt,
+				Required: true,
+			},
+		},
+	}
+}
+
 func resourceSharedDrive() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
@@ -626,6 +708,30 @@ func resourceInfrastructureCreate(d *schema.ResourceData, meta interface{}) erro
 			}
 		}
 	}
+
+	// if policies, ok := d.GetOkExists("firmware_upgrade_policy"); ok {
+	// 	for _, policyIntf := range policies.(*schema.Set).List() {
+	// 		//populate shared drive
+	// 		retInstanceArrays, err := client.InstanceArrays(createdInfra.InfrastructureID)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+
+	// 		policyMap := policyIntf.(map[string]interface{})
+	// 		// sdMap["infrastructure_instance_arrays_planned"] = *retInstanceArrays
+	// 		// sdMap["infrastructure_instance_arrays_existing"] = iaInfraMap
+	// 		policy := expandPolicy(policyMap)
+	// 		//create shared drive
+	// 		_, err = client.ServerFirmwareUpgradePolicyCreate(policy)
+	// 		if err != nil {
+	// 			err1 := resourceInfrastructureRead(d, meta)
+	// 			if err1 != nil {
+	// 				return err1
+	// 			}
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
 	log.Printf("current state object after create (before read):%v", d.Get("instance_array"))
 
@@ -1455,6 +1561,63 @@ func sharedDriveResourceHash(v interface{}) int {
 	return hash(buf.String())
 }
 
+func firmwarePolicyRuleToString(v interface{}) string {
+	var buf bytes.Buffer
+
+	rule := v.(map[string]interface{})
+
+	operation := rule["operation"].(string)
+	server_component_name := rule["server_component_name"].(string)
+	server_component_type := rule["server_component_type"].(string)
+	server_component_firmware_version := rule["server_component_firmware_version"].(string)
+	datacenter_name := rule["datacenter_name"].(string)
+	server_vendor := rule["server_vendor"].(string)
+	server_tags_json := rule["server_tags_json"].(string)
+	server_component_target_version := rule["server_component_target_version"].(string)
+	server_id := strconv.Itoa(rule["server_id"].(int))
+
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(operation)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_component_name)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_component_type)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_component_firmware_version)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(datacenter_name)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_vendor)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_tags_json)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_component_target_version)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_id)))
+
+	return buf.String()
+}
+
+func firmareUpgradePolicyRuleHash(v interface{}) int {
+	return hash(firmwarePolicyRuleToString(v))
+}
+
+func firmwareUpgradePolicyToString(v interface{}) string {
+	var buf bytes.Buffer
+
+	policy := v.(map[string]interface{})
+
+	label := policy["server_firmware_upgrade_policy_label"].(string)
+	server_firmware_upgrade_policy_action := policy["server_firmware_upgrade_policy_action"].(string)
+	instance_array_id := strconv.Itoa(policy["instance_array_id"].(int))
+
+	firmware_upgrade_policy_rules := policy["server_firmware_upgrade_policy_rules"].(*schema.Set).List()
+	for _, rule := range firmware_upgrade_policy_rules {
+		buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(firmwarePolicyRuleToString(rule))))
+	}
+
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(label)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(server_firmware_upgrade_policy_action)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_id)))
+
+	return buf.String()
+}
+
+func firmwareUpgradePolicyResourceHash(v interface{}) int {
+	return hash(firmwareUpgradePolicyToString(v))
+}
+
 func instanceArrayResourceHash(v interface{}) int {
 	var buf bytes.Buffer
 	ia := v.(map[string]interface{})
@@ -1498,6 +1661,11 @@ func instanceArrayResourceHash(v interface{}) int {
 	interfaces := ia["interface"].(*schema.Set).List()
 	for _, intf := range interfaces {
 		buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(interfaceToString(intf))))
+	}
+
+	firmware_upgrade_policy := ia["firmware_upgrade_policy"].(*schema.Set).List()
+	for _, policy := range firmware_upgrade_policy {
+		buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(firmwareUpgradePolicyToString(policy))))
 	}
 
 	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_label)))
