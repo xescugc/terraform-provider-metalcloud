@@ -1,6 +1,8 @@
 package metalcloud
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	mc "github.com/metalsoft-io/metal-cloud-sdk-go/v2"
 )
@@ -92,6 +94,75 @@ func expandSharedDrive(d map[string]interface{}) mc.SharedDrive {
 	}
 
 	return sd
+}
+
+func flattenFirmwarePolicy(firmwarePolicy mc.ServerFirmwareUpgradePolicy, label string) map[string]interface{} {
+	var d = make(map[string]interface{})
+
+	d["server_firmware_upgrade_policy_label"] = firmwarePolicy.ServerFirmwareUpgradePolicyLabel
+	d["server_firmware_upgrade_policy_id"] = firmwarePolicy.ServerFirmwareUpgradePolicyID
+	d["server_firmware_upgrade_policy_action"] = firmwarePolicy.ServerFirmwareUpgradePolicyAction
+	d["instance_array_label"] = label
+
+	ruleSet := schema.NewSet(firmareUpgradePolicyRuleHash, []interface{}{})
+
+	for _, rule := range firmwarePolicy.ServerFirmwareUpgradePolicyRules {
+		ruleSet.Add(flattenFirmwarePolicyRule(rule))
+	}
+
+	d["server_firmware_upgrade_policy_rules"] = ruleSet
+
+	return d
+}
+
+func flattenFirmwarePolicyRule(firmwarePolicyRule mc.ServerFirmwareUpgradePolicyRule) map[string]interface{} {
+	var d = make(map[string]interface{})
+
+	d["operation"] = firmwarePolicyRule.Operation
+	d["property"] = firmwarePolicyRule.Property
+	d["value"] = firmwarePolicyRule.Value
+
+	return d
+}
+
+func expandFirmwarePolicy(d map[string]interface{}) mc.ServerFirmwareUpgradePolicy {
+	var p mc.ServerFirmwareUpgradePolicy
+
+	if d["server_firmware_upgrade_policy_id"] != nil {
+		p.ServerFirmwareUpgradePolicyID = d["server_firmware_upgrade_policy_id"].(int)
+	}
+
+	instance_array_label := d["instance_array_label"].(string)
+	instance_arrays := d["infrastructure_instance_arrays"].(map[string]mc.InstanceArray)
+
+	if ia, ok := instance_arrays[fmt.Sprintf("%s.vanilla", instance_array_label)]; ok {
+		p.InstanceArrayID = ia.InstanceArrayID
+	}
+
+	p.ServerFirmwareUpgradePolicyLabel = d["server_firmware_upgrade_policy_label"].(string)
+	p.ServerFirmwareUpgradePolicyAction = d["server_firmware_upgrade_policy_action"].(string)
+	ruleList := []mc.ServerFirmwareUpgradePolicyRule{}
+
+	if rules, ok := d["server_firmware_upgrade_policy_rules"]; ok {
+		for _, ruleIntf := range rules.(*schema.Set).List() {
+			rule := expandFirmwarePolicyRule(ruleIntf.(map[string]interface{}))
+			ruleList = append(ruleList, rule)
+		}
+
+		p.ServerFirmwareUpgradePolicyRules = ruleList
+	}
+
+	return p
+}
+
+func expandFirmwarePolicyRule(d map[string]interface{}) mc.ServerFirmwareUpgradePolicyRule {
+	var rule mc.ServerFirmwareUpgradePolicyRule
+
+	rule.Operation = d["operation"].(string)
+	rule.Property = d["property"].(string)
+	rule.Value = d["value"].(string)
+
+	return rule
 }
 
 func expandInstanceArray(d map[string]interface{}) mc.InstanceArray {
