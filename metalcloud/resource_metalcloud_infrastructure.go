@@ -1267,7 +1267,6 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 						InstanceArrayInterfaceIndex: intMap["interface_index"].(int),
 						NetworkID:                   network.NetworkID,
 					}
-
 					_, err = client.InstanceArrayInterfaceAttachNetwork(retIA.InstanceArrayID, intf.InstanceArrayInterfaceIndex, intf.NetworkID)
 					if err != nil {
 						err1 := resourceInfrastructureRead(d, meta)
@@ -1295,7 +1294,7 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 					}
 				}
 
-				if found == false {
+				if found == false && existingIntf.InstanceArrayInterfaceIndex > 1 {
 					_, err = client.InstanceArrayInterfaceDetach(retIA.InstanceArrayID, existingIntf.InstanceArrayInterfaceIndex)
 					if err != nil {
 						err1 := resourceInfrastructureRead(d, meta)
