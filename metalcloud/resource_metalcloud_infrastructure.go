@@ -365,15 +365,15 @@ func resourceNetwork() *schema.Resource {
 func resourceInstanceArrayInterface() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"interface_index": &schema.Schema{
+			"interface_index": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"network_label": &schema.Schema{
+			"network_label": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"network_id": &schema.Schema{
+			"network_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				Computed: true,
@@ -1176,9 +1176,9 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 	stateNetworksMap := make(map[int]*mc.Network)
 
 	if d.HasChange("network") {
-		nMapByLabel := d.Get("network").(*schema.Set).List()
+		nList := d.Get("network").(*schema.Set).List()
 
-		for _, nMapIntf := range nMapByLabel {
+		for _, nMapIntf := range nList {
 			nMap := nMapIntf.(map[string]interface{})
 			n := expandNetwork(nMap)
 			stateNetworksMap[n.NetworkID] = &n
@@ -1239,41 +1239,6 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 				stateInstanceArrayMap[ia.InstanceArrayID] = &ia
 			}
 
-			//update interfaces
-			intMapList := iaMap["interface"].(*schema.Set).List()
-
-			var nMapList []interface{}
-
-			if nMapListIntf, ok := d.GetOkExists("networks"); ok {
-				nMapList = nMapListIntf.(*schema.Set).List()
-			}
-
-			intList := []mc.InstanceArrayInterface{}
-			for _, intMapIntf := range intMapList {
-				intMap := intMapIntf.(map[string]interface{})
-
-				//because we could have alternations to the interface index - to network map
-				//we're retrieving the networks rather than relying on the exisitng network_id
-				//locate network with label and get it's network id
-				var networkID = 0
-				for _, nMapIntf := range nMapList {
-					nMap := nMapIntf.(map[string]interface{})
-					if nMap["network_label"] == intMap["network_label"] {
-						networkID = nMap["network_id"].(int)
-					}
-					intf := mc.InstanceArrayInterface{
-						InstanceArrayInterfaceIndex: intMap["interface_index"].(int),
-						NetworkID:                   networkID,
-					}
-
-					intList = append(intList, intf)
-
-					needsDeploy = true
-				}
-			}
-
-			ia.InstanceArrayInterfaces = intList
-
 			bkeepDetachingDrives := d.Get("keep_detaching_drives").(bool)
 			bSwapExistingInstancesHardware := false
 
@@ -1287,8 +1252,64 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 				return err
 			}
 
+			//update interfaces
+			intMapList := iaMap["interface"].(*schema.Set).List()
+
+			for _, intMapIntf := range intMapList {
+				intMap := intMapIntf.(map[string]interface{})
+
+				//because we could have alternations to the interface index - to network map
+				//we're retrieving the networks rather than relying on the exisitng network_id
+				//locate network with label and get it's network id
+
+				if network, ok := (*retNetworksMap)[intMap["network_label"].(string)]; ok {
+					intf := mc.InstanceArrayInterface{
+						InstanceArrayInterfaceIndex: intMap["interface_index"].(int),
+						NetworkID:                   network.NetworkID,
+					}
+
+					_, err = client.InstanceArrayInterfaceAttachNetwork(retIA.InstanceArrayID, intf.InstanceArrayInterfaceIndex, intf.NetworkID)
+					if err != nil {
+						err1 := resourceInfrastructureRead(d, meta)
+						if err1 != nil {
+							return err1
+						}
+						return err
+					}
+					needsDeploy = true
+				}
+			}
+
+			existingIntfList := retIA.InstanceArrayInterfaces
+
+			for _, existingIntf := range existingIntfList {
+				found := false
+
+				for _, intMapIntf := range intMapList {
+					intMap := intMapIntf.(map[string]interface{})
+
+					intf := expandInstanceArrayInterface(intMap)
+
+					if existingIntf.InstanceArrayInterfaceIndex == intf.InstanceArrayInterfaceIndex {
+						found = true
+					}
+				}
+
+				if found == false {
+					_, err = client.InstanceArrayInterfaceDetach(retIA.InstanceArrayID, existingIntf.InstanceArrayInterfaceIndex)
+					if err != nil {
+						err1 := resourceInfrastructureRead(d, meta)
+						if err1 != nil {
+							return err1
+						}
+						return err
+					}
+					needsDeploy = true
+				}
+			}
+
 			cvList := iaMap["instance_custom_variables"].([]interface{})
-			instanceList, err := client.InstanceArrayInstances(ia.InstanceArrayID)
+			instanceList, err := client.InstanceArrayInstances(retIA.InstanceArrayID)
 			if err != nil {
 				return err
 			}
@@ -1689,7 +1710,7 @@ func createOrUpdateNetwork(infrastructureID int, n mc.Network, client *mc.Client
 				(v.NetworkType == NETWORK_TYPE_SAN ||
 					v.NetworkType == NETWORK_TYPE_WAN) {
 				v.NetworkOperation.NetworkLabel = n.NetworkLabel
-				nToReturn, err = client.NetworkEdit(networkID, *v.NetworkOperation)
+				nToReturn, err = client.NetworkEdit(v.NetworkID, *v.NetworkOperation)
 				if err != nil {
 					return nil, err
 				}
@@ -1897,15 +1918,16 @@ func interfaceToString(v interface{}) string {
 
 	i := v.(map[string]interface{})
 
-	instance_array_interface_label := i["instance_array_interface_label"].(string)
-	instance_array_interface_service_status := i["instance_array_interface_service_status"].(string)
-	instance_array_interface_index := strconv.Itoa(i["instance_array_interface_index"].(int))
-	network_id := strconv.Itoa(i["network_id"].(int))
+	// instance_array_interface_label := i["instance_array_interface_label"].(string)
+	// instance_array_interface_service_status := i["instance_array_interface_service_status"].(string)
+	instance_array_interface_index := strconv.Itoa(i["interface_index"].(int))
+	// network_id := strconv.Itoa(i["network_id"].(int))
+	network_label := i["network_label"].(string)
 
-	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_interface_label)))
-	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_interface_service_status)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(network_label)))
+	// buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_interface_service_status)))
 	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(instance_array_interface_index)))
-	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(network_id)))
+	// buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(network_id)))
 
 	return buf.String()
 }

@@ -26,9 +26,9 @@ func flattenInstanceArray(instanceArray mc.InstanceArray) map[string]interface{}
 	d["instance_array_additional_wan_ipv4_json"] = instanceArray.InstanceArrayAdditionalWanIPv4JSON
 	switch instanceArray.InstanceArrayCustomVariables.(type) {
 	case []interface{}:
-		d["instance_array_custom_variables"] = make(map[string]string)
+		d["instance_array_custom_variables"] = make(map[string]interface{})
 	default:
-		iacv := make(map[string]string)
+		iacv := make(map[string]interface{})
 
 		for k, v := range instanceArray.InstanceArrayCustomVariables.(map[string]interface{}) {
 			iacv[k] = v.(string)
@@ -200,7 +200,7 @@ func expandInstanceArray(d map[string]interface{}) mc.InstanceArray {
 	}
 
 	if d["instance_array_custom_variables"] != nil {
-		iacv := make(map[string]string)
+		iacv := make(map[string]interface{})
 
 		for k, v := range d["instance_array_custom_variables"].(map[string]interface{}) {
 			iacv[k] = v.(string)
@@ -374,10 +374,7 @@ func flattenInstanceArrayInterface(i mc.InstanceArrayInterface) map[string]inter
 	var d = make(map[string]interface{})
 
 	d["instance_array_interface_id"] = i.InstanceArrayInterfaceID
-	d["instance_array_interface_label"] = i.InstanceArrayInterfaceLabel
-	d["instance_array_interface_lagg_indexes"] = i.InstanceArrayInterfaceLAGGIndexes
-	d["instance_array_interface_index"] = i.InstanceArrayInterfaceIndex
-	d["instance_array_interface_service_status"] = i.InstanceArrayInterfaceServiceStatus
+	d["interface_index"] = i.InstanceArrayInterfaceIndex
 	d["network_id"] = i.NetworkID
 
 	return d
@@ -391,10 +388,7 @@ func expandInstanceArrayInterface(d map[string]interface{}) mc.InstanceArrayInte
 		i.InstanceArrayInterfaceID = d["instance_array_interface_id"].(int)
 	}
 
-	i.InstanceArrayInterfaceLabel = d["instance_array_interface_label"].(string)
-	i.InstanceArrayInterfaceLAGGIndexes = d["instance_array_interface_lagg_indexes"].([]interface{})
-	i.InstanceArrayInterfaceIndex = d["instance_array_interface_index"].(int)
-	i.InstanceArrayInterfaceServiceStatus = d["instance_array_interface_service_status"].(string)
+	i.InstanceArrayInterfaceIndex = d["interface_index"].(int)
 	i.NetworkID = d["network_id"].(int)
 
 	return i
