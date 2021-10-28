@@ -82,12 +82,9 @@ func expandSharedDrive(d map[string]interface{}) mc.SharedDrive {
 		sd.SharedDriveAttachedInstanceArrays = []int{}
 
 		for _, label := range d["shared_drive_attached_instance_arrays"].([]interface{}) {
-			iaPlannedMap := d["infrastructure_instance_arrays_planned"].(map[string]mc.InstanceArray)
-			iaExistingMap := d["infrastructure_instance_arrays_existing"].(map[string]mc.InstanceArray)
+			iaMap := d["infrastructure_instance_arrays"].(map[string]mc.InstanceArray)
 
-			if val, ok := iaExistingMap[label.(string)]; ok {
-				sd.SharedDriveAttachedInstanceArrays = append(sd.SharedDriveAttachedInstanceArrays, val.InstanceArrayID)
-			} else if val, ok := iaPlannedMap[label.(string)]; ok {
+			if val, ok := iaMap[fmt.Sprintf("%s.vanilla", label.(string))]; ok {
 				sd.SharedDriveAttachedInstanceArrays = append(sd.SharedDriveAttachedInstanceArrays, val.InstanceArrayID)
 			}
 		}
@@ -96,13 +93,14 @@ func expandSharedDrive(d map[string]interface{}) mc.SharedDrive {
 	return sd
 }
 
-func flattenFirmwarePolicy(firmwarePolicy mc.ServerFirmwareUpgradePolicy, label string) map[string]interface{} {
+func flattenFirmwarePolicy(firmwarePolicy mc.ServerFirmwareUpgradePolicy, iaList []interface{}) map[string]interface{} {
 	var d = make(map[string]interface{})
 
 	d["server_firmware_upgrade_policy_label"] = firmwarePolicy.ServerFirmwareUpgradePolicyLabel
 	d["server_firmware_upgrade_policy_id"] = firmwarePolicy.ServerFirmwareUpgradePolicyID
 	d["server_firmware_upgrade_policy_action"] = firmwarePolicy.ServerFirmwareUpgradePolicyAction
-	d["instance_array_label"] = label
+	d["instance_array_list"] = make([]string, len(firmwarePolicy.InstanceArrayIDList))
+	d["instance_array_list"] = iaList
 
 	ruleSet := schema.NewSet(firmareUpgradePolicyRuleHash, []interface{}{})
 
@@ -132,11 +130,16 @@ func expandFirmwarePolicy(d map[string]interface{}) mc.ServerFirmwareUpgradePoli
 		p.ServerFirmwareUpgradePolicyID = d["server_firmware_upgrade_policy_id"].(int)
 	}
 
-	instance_array_label := d["instance_array_label"].(string)
-	instance_arrays := d["infrastructure_instance_arrays"].(map[string]mc.InstanceArray)
+	if d["instance_array_list"] != nil {
+		p.InstanceArrayIDList = []int{}
 
-	if ia, ok := instance_arrays[fmt.Sprintf("%s.vanilla", instance_array_label)]; ok {
-		p.InstanceArrayID = ia.InstanceArrayID
+		for _, label := range d["instance_array_list"].([]interface{}) {
+			iaMap := d["infrastructure_instance_arrays"].(map[string]mc.InstanceArray)
+
+			if val, ok := iaMap[fmt.Sprintf("%s.vanilla", label.(string))]; ok {
+				p.InstanceArrayIDList = append(p.InstanceArrayIDList, val.InstanceArrayID)
+			}
+		}
 	}
 
 	p.ServerFirmwareUpgradePolicyLabel = d["server_firmware_upgrade_policy_label"].(string)

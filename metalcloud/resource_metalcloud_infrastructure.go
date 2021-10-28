@@ -398,9 +398,12 @@ func resourceFirmwareUpgradePolicy() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"instance_array_label": {
-				Type:     schema.TypeString,
-				Required: true,
+			"instance_array_list": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
 			},
 			"server_firmware_upgrade_policy_rules": {
 				Type:     schema.TypeSet,
@@ -667,8 +670,7 @@ func resourceInfrastructureCreate(d *schema.ResourceData, meta interface{}) erro
 			}
 
 			sdMap := resSD.(map[string]interface{})
-			sdMap["infrastructure_instance_arrays_planned"] = *retInstanceArrays
-			sdMap["infrastructure_instance_arrays_existing"] = iaInfraMap
+			sdMap["infrastructure_instance_arrays"] = *retInstanceArrays
 			sd := expandSharedDrive(sdMap)
 			//create shared drive
 			_, err = client.SharedDriveCreate(createdInfra.InfrastructureID, sd)
@@ -693,7 +695,7 @@ func resourceInfrastructureCreate(d *schema.ResourceData, meta interface{}) erro
 				}
 				return err
 			}
-			//TODO: cand treci la update prin rules poti sa verifici cu has change
+
 			policyMap := policyIntf.(map[string]interface{})
 			policyMap["infrastructure_instance_arrays"] = *retInstanceArrays
 			policy := expandFirmwarePolicy(policyMap)
@@ -706,28 +708,32 @@ func resourceInfrastructureCreate(d *schema.ResourceData, meta interface{}) erro
 				}
 				return err
 			}
-			ia, err := client.InstanceArrayGet(policy.InstanceArrayID)
-			if err != nil {
-				err1 := resourceInfrastructureRead(d, meta)
-				if err1 != nil {
-					return err1
-				}
-				return err
-			}
 
-			policiesList := ia.InstanceArrayFirmwarePolicies
-			policiesList = append(policiesList, res.ServerFirmwareUpgradePolicyID)
-			ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policiesList
-			detachDrives := true
-			swapHardware := false
-			_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
-
-			if err != nil {
-				err1 := resourceInfrastructureRead(d, meta)
-				if err1 != nil {
-					return err1
+			for _, iaID := range policy.InstanceArrayIDList {
+				ia, err := client.InstanceArrayGet(iaID)
+				if err != nil {
+					err1 := resourceInfrastructureRead(d, meta)
+					if err1 != nil {
+						return err1
+					}
+					return err
 				}
-				return err
+
+				policiesList := ia.InstanceArrayFirmwarePolicies
+				policiesList = append(policiesList, res.ServerFirmwareUpgradePolicyID)
+				ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policiesList
+
+				detachDrives := true
+				swapHardware := false
+				_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
+
+				if err != nil {
+					err1 := resourceInfrastructureRead(d, meta)
+					if err1 != nil {
+						return err1
+					}
+					return err
+				}
 			}
 		}
 	}
@@ -832,6 +838,18 @@ func resourceInfrastructureRead(d *schema.ResourceData, meta interface{}) error 
 	retInstanceArrays, err := client.InstanceArrays(infrastructureID)
 	if err != nil {
 		return err
+	}
+
+	retFirmwarePolicies := make(map[string]mc.ServerFirmwareUpgradePolicy)
+
+	for _, ia := range *retInstanceArrays {
+		for _, policyID := range ia.InstanceArrayFirmwarePolicies {
+			policy, err := client.ServerFirmwarePolicyGet(policyID)
+			if err != nil {
+				return err
+			}
+			retFirmwarePolicies[policy.ServerFirmwareUpgradePolicyLabel] = *policy
+		}
 	}
 
 	retDriveArrays, err := client.DriveArrays(infrastructureID)
@@ -1031,27 +1049,23 @@ func resourceInfrastructureRead(d *schema.ResourceData, meta interface{}) error 
 	if policies, ok := d.GetOk("firmware_upgrade_policy"); ok {
 		for _, policyIntf := range policies.(*schema.Set).List() {
 			policyMap := policyIntf.(map[string]interface{})
-			label := policyMap["instance_array_label"]
-
-			retFirmwarePolicy := map[string]mc.ServerFirmwareUpgradePolicy{}
-			if ia, ok := (*retInstanceArrays)[fmt.Sprintf("%s.vanilla", label)]; ok {
-				for _, policyID := range ia.InstanceArrayFirmwarePolicies {
-					policy, err := client.ServerFirmwarePolicyGet(policyID)
-
-					if err != nil {
-						return err
-					}
-					retFirmwarePolicy[policy.ServerFirmwareUpgradePolicyLabel] = *policy
-				}
-			}
 
 			if policyLabel, ok := policyMap["server_firmware_upgrade_policy_label"]; ok {
-				p, ok := retFirmwarePolicy[policyLabel.(string)]
+				p, ok := retFirmwarePolicies[policyLabel.(string)]
 				if !ok {
 					continue
 				}
 
-				policyResult := flattenFirmwarePolicy(p, label.(string))
+				policyIAs := []interface{}{}
+				for _, value := range p.InstanceArrayIDList {
+					for _, ia := range *retInstanceArrays {
+						if value == ia.InstanceArrayID {
+							policyIAs = append(policyIAs, ia.InstanceArrayLabel)
+						}
+					}
+				}
+
+				policyResult := flattenFirmwarePolicy(p, policyIAs)
 				policySet.Add(policyResult)
 			}
 		}
@@ -1511,28 +1525,30 @@ func resourceInfrastructureUpdate(d *schema.ResourceData, meta interface{}) erro
 					return err
 				}
 
-				ia, err := client.InstanceArrayGet(policy.InstanceArrayID)
-				if err != nil {
-					err1 := resourceInfrastructureRead(d, meta)
-					if err1 != nil {
-						return err1
+				for _, iaID := range policy.InstanceArrayIDList {
+					ia, err := client.InstanceArrayGet(iaID)
+					if err != nil {
+						err1 := resourceInfrastructureRead(d, meta)
+						if err1 != nil {
+							return err1
+						}
+						return err
 					}
-					return err
-				}
 
-				policiesList := ia.InstanceArrayFirmwarePolicies
-				policiesList = append(policiesList, p.ServerFirmwareUpgradePolicyID)
-				ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policiesList
-				detachDrives := true
-				swapHardware := false
-				_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
+					policiesList := ia.InstanceArrayFirmwarePolicies
+					policiesList = append(policiesList, p.ServerFirmwareUpgradePolicyID)
+					ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policiesList
+					detachDrives := true
+					swapHardware := false
+					_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
 
-				if err != nil {
-					err1 := resourceInfrastructureRead(d, meta)
-					if err1 != nil {
-						return err1
+					if err != nil {
+						err1 := resourceInfrastructureRead(d, meta)
+						if err1 != nil {
+							return err1
+						}
+						return err
 					}
-					return err
 				}
 
 				needsDeploy = true
@@ -1645,26 +1661,29 @@ func deleteFirmwarePolicy(p *mc.ServerFirmwareUpgradePolicy, client *mc.Client) 
 		return err
 	}
 
-	ia, err := client.InstanceArrayGet(p.InstanceArrayID)
+	for _, iaID := range p.InstanceArrayIDList {
+		ia, err := client.InstanceArrayGet(iaID)
 
-	if err != nil {
-		return err
-	}
-
-	policyList := ia.InstanceArrayFirmwarePolicies
-
-	for i, v := range policyList {
-		if v == p.ServerFirmwareUpgradePolicyID {
-			policyList[i] = policyList[len(policyList)-1]
-			policyList[len(policyList)-1] = 0
-			policyList = policyList[:len(policyList)-1]
+		if err != nil {
+			return err
 		}
-	}
 
-	ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policyList
-	detachDrives := true
-	swapHardware := false
-	_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
+		policyList := ia.InstanceArrayFirmwarePolicies
+
+		for i, v := range policyList {
+			if v == p.ServerFirmwareUpgradePolicyID {
+				policyList[i] = policyList[len(policyList)-1]
+				policyList[len(policyList)-1] = 0
+				policyList = policyList[:len(policyList)-1]
+			}
+		}
+
+		ia.InstanceArrayOperation.InstanceArrayFirmwarePolicies = policyList
+		detachDrives := true
+		swapHardware := false
+		_, err = client.InstanceArrayEdit(ia.InstanceArrayID, *ia.InstanceArrayOperation, &swapHardware, &detachDrives, nil, nil)
+
+	}
 	return nil
 }
 
