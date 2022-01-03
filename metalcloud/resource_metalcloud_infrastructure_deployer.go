@@ -196,7 +196,11 @@ func resourceInfrastructureDeployerUpdate(ctx context.Context, d *schema.Resourc
 	needsDeploy := d.Get("edited").(bool)
 	preventDeploy := d.Get("prevent_deploy").(bool)
 
-	updateInfrastructureCustomVariables(d, infrastructure_id, client)
+	diags := updateInfrastructureCustomVariables(d, infrastructure_id, client)
+
+	if diags.HasError() {
+		return diags
+	}
 
 	//This is where the magic happens.
 	if needsDeploy && !preventDeploy {
