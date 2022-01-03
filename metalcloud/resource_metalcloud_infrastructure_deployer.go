@@ -88,12 +88,6 @@ func ResourceInfrastructureDeployer() *schema.Resource {
 				Optional: true,
 				Default:  false,
 			},
-			"keep_detaching_drives": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  nil,  //default is computed serverside if left nil
-				Computed: true, //default is computed serverside if left nil
-			},
 			"keep_infrastructure_on_resource_destroy": {
 				Type:     schema.TypeBool,
 				Optional: true,

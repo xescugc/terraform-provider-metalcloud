@@ -97,6 +97,7 @@ The following arguments are supported:
 * `drive_array` (Optional, default: `none`) One or more blocks of this type define **DriveArrays** linked to this InstanceArray. Refer to [drive_array](/docs/providers/metalcloud/r/drive_array.html) for more details.
 * `firewall_rule` (Optional, default BLOCK ALL) One or more blocks of this type define firewall rules to be applied on each server of this InstanceArray. Reffer to [firewall_rule](/docs/providers/metalcloud/r/firewall_rule.html) for more details.
 * `interface` (Optional) One or more blocks of this type define how the InstanceArray is connected to a Network. Refer to [interface](/docs/providers/metalcloud/r/instance_array_interface.html) for more details.
+* `keep_detaching_drives` (Optional, default true) - If **true**, the detaching Drive objects will not be deleted. If **false**, and the number of Instance objects is reduced, then the detaching Drive objects will be deleted.
 * `instance_array_custom_variables` (Optional, default: `[]`) - All of the variables specified as a map of *string* = *string* such as { var_a="var_value" } will be sent to the underlying deploy process and referenced in operating system templates and workflows. These are variables that will be applied at the `instance array` level and will override any identical ones configured at the `infrastructure` level specified via the `infrastructure_custom_variables` property. Example:
   ```
   instance_array_custom_variables = {

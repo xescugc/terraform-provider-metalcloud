@@ -135,7 +135,11 @@ func resourceInstanceArray() *schema.Resource {
 				Computed: true, //default is computed serverside
 				Elem:     resourceFirewallRule(),
 			},
-
+			"keep_detaching_drives": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
 			"interface": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -470,7 +474,7 @@ func resourceInstanceArrayUpdate(ctx context.Context, d *schema.ResourceData, me
 	copyInstanceArrayToOperation(ia, retIA.InstanceArrayOperation)
 
 	bSwapExistingInstancesHardware := false
-	bkeepDetachingDrives := false
+	bkeepDetachingDrives := d.Get("keep_detaching_drives").(bool)
 
 	editedIA, err := client.InstanceArrayEdit(id, *retIA.InstanceArrayOperation, &bSwapExistingInstancesHardware, &bkeepDetachingDrives, nil, nil)
 
